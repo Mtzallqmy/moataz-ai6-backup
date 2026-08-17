@@ -10,4 +10,8 @@
     <issue id="LocalContextGetResourceValueCall" severity="warning" />
     <issue id="NonObservableLocale" severity="warning" />
     <issue id="ContextCastToActivity" severity="warning" />
+
+    <!-- Google Play requires 16 KB page-size support for Android 15+ targets. Never ship
+         a native dependency that regresses to 4 KB ELF alignment. -->
+    <issue id="Aligned16KB" severity="error" />
 </lint>
