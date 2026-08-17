@@ -102,15 +102,15 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p .ci-logs
-          ./gradlew --no-daemon --stacktrace :ai:testDebugUnitTest :app:testDebugUnitTest 2>&1 | tee .ci-logs/unit-tests.log
+          mkdir -p ci-logs
+          ./gradlew --no-daemon --stacktrace :ai:testDebugUnitTest :app:testDebugUnitTest 2>&1 | tee ci-logs/unit-tests.log
 
       - name: Release lint
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p .ci-logs
-          ./gradlew --no-daemon --stacktrace :app:lintRelease 2>&1 | tee .ci-logs/lint-release.log
+          mkdir -p ci-logs
+          ./gradlew --no-daemon --stacktrace :app:lintRelease 2>&1 | tee ci-logs/lint-release.log
 
       - name: Upload test diagnostics
         if: failure()
@@ -118,7 +118,7 @@ jobs:
         with:
           name: moataz-ai-test-diagnostics
           path: |
-            .ci-logs/*.log
+            ci-logs/*.log
             ai/build/reports/tests/**
             app/build/reports/tests/**
             app/build/reports/lint-results-release.*
@@ -154,4 +154,4 @@ jobs:
 
       - name: Clean signing material
         if: always()
-        run: rm -rf .ci .ci-logs local.properties
+        run: rm -rf .ci ci-logs local.properties
