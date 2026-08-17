@@ -7,6 +7,9 @@ on:
       - agent/production-android-hardening
     paths:
       - .github/workflows/android-trial-arm64.yml
+  pull_request:
+    paths:
+      - .github/workflows/android-trial-arm64.yml
 
 permissions:
   contents: read
