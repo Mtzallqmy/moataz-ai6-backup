@@ -1,0 +1,41 @@
+name: Apply Production Compatibility Fixes
+
+on:
+  push:
+    branches:
+      - agent/production-android-hardening
+    paths:
+      - tools/apply-production-compat-fixes.py
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/production-android-hardening
+          fetch-depth: 0
+
+      - name: Apply guarded compatibility fixes
+        run: python3 tools/apply-production-compat-fixes.py
+
+      - name: Validate patch
+        run: git diff --check
+
+      - name: Commit compatibility fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java
+          git commit -m "fix Android 8+ production compatibility"
+          git push origin HEAD:agent/production-android-hardening
