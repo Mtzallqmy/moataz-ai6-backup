@@ -112,7 +112,7 @@ class ChatGenerationForegroundService : Service() {
                 wakeLock = it
             }
             ?: return
-        if (!lock.isHeld) lock.acquire()
+        if (!lock.isHeld) lock.acquire(MAX_WAKE_LOCK_HOLD_MS)
     }
 
     private fun releaseWakeLock() {
@@ -126,6 +126,9 @@ class ChatGenerationForegroundService : Service() {
         private const val ACTION_RECONCILE = "me.rerere.rikkahub.action.RECONCILE_CHAT_GENERATION_FGS"
         private const val NOTIFICATION_ID = 2002
         private const val STARTUP_TIMEOUT_MS = 5_000L
+        // Safety ceiling only: normal generations release the lock explicitly when work ends.
+        // Prevents a crashed/stuck reconciliation path from holding a partial wakelock forever.
+        private const val MAX_WAKE_LOCK_HOLD_MS = 8 * 60 * 60 * 1000L
         private val shouldRun = AtomicBoolean(false)
         private val readiness = ForegroundServiceReadiness()
 
