@@ -1,11 +1,15 @@
 package me.rerere.rikkahub.data.agentrun
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 
 private const val TAG = "AgentRunBootRecovery"
 
@@ -77,6 +81,16 @@ class AgentRunBootRecovery(
          */
         private fun postAggregateNotification(context: Context, stranded: List<AgentRun>) {
             runCatching {
+                if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    logSafe { Log.i(TAG, "postAggregateNotification skipped: notification permission denied") }
+                    return
+                }
                 val nm = context.getSystemService(NotificationManager::class.java) ?: return
                 if (nm.getNotificationChannel(CHANNEL_ID) == null) {
                     nm.createNotificationChannel(

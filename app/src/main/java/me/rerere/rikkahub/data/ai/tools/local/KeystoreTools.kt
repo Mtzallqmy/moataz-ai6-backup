@@ -1,9 +1,9 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
-import android.security.keystore.StrongBoxUnavailableException
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -148,11 +148,16 @@ fun keystoreGenerateKeyTool(): Tool = Tool(
                     val gen = KeyPairGenerator.getInstance(
                         KeyProperties.KEY_ALGORITHM_RSA, ANDROID_KEYSTORE
                     )
-                    try {
-                        gen.initialize(spec.setIsStrongBoxBacked(true).build())
-                        gen.generateKeyPair()
-                    } catch (_: StrongBoxUnavailableException) {
-                        gen.initialize(spec.setIsStrongBoxBacked(false).build())
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        try {
+                            gen.initialize(spec.setIsStrongBoxBacked(true).build())
+                            gen.generateKeyPair()
+                        } catch (_: Throwable) {
+                            gen.initialize(spec.setIsStrongBoxBacked(false).build())
+                            gen.generateKeyPair()
+                        }
+                    } else {
+                        gen.initialize(spec.build())
                         gen.generateKeyPair()
                     }
                 }
@@ -167,11 +172,16 @@ fun keystoreGenerateKeyTool(): Tool = Tool(
                     val gen = KeyGenerator.getInstance(
                         KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE
                     )
-                    try {
-                        gen.init(spec.setIsStrongBoxBacked(true).build())
-                        gen.generateKey()
-                    } catch (_: StrongBoxUnavailableException) {
-                        gen.init(spec.setIsStrongBoxBacked(false).build())
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        try {
+                            gen.init(spec.setIsStrongBoxBacked(true).build())
+                            gen.generateKey()
+                        } catch (_: Throwable) {
+                            gen.init(spec.setIsStrongBoxBacked(false).build())
+                            gen.generateKey()
+                        }
+                    } else {
+                        gen.init(spec.build())
                         gen.generateKey()
                     }
                 }

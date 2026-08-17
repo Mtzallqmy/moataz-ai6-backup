@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
 import android.location.LocationManager
@@ -42,6 +43,7 @@ private fun JsonObjectBuilder.putLocation(loc: Location, providerName: String) {
     put("timestamp_ms", loc.time)
 }
 
+@SuppressLint("MissingPermission") // execute() checks ACCESS_FINE_LOCATION before every location API call.
 fun locationTool(context: Context): Tool = Tool(
     name = "get_location",
     description = """
