@@ -1,0 +1,211 @@
+name: Android Trial ARM64 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/production-android-hardening
+    paths:
+      - .github/workflows/android-trial-arm64.yml
+  pull_request:
+    paths:
+      - .github/workflows/android-trial-arm64.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-trial-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-trial-apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --channel=3 \
+            "platform-tools" \
+            "platforms;android-37.0" \
+            "build-tools;36.0.0" \
+            "cmake;3.22.1" \
+            "ndk;28.2.13676358"
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+          run_install: false
+
+      - name: Restore Termux dependency and force ARM64-only trial build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          versions = Path("gradle/libs.versions.toml")
+          text = versions.read_text()
+          text = text.replace('termux = "0.118.3"', 'termux = "0.118.0"')
+          versions.write_text(text)
+
+          build = Path("app/build.gradle.kts")
+          text = build.read_text()
+          if "implementation(libs.termux.terminal.view)" not in text:
+              marker = "    implementation(libs.slf4j.android)\n"
+              if marker not in text:
+                  raise SystemExit("Could not locate dependency insertion point")
+              text = text.replace(
+                  marker,
+                  marker + "\n    // Termux terminal UI/runtime used by Workspace terminal panes\n    implementation(libs.termux.terminal.view)\n",
+                  1,
+              )
+
+          old_abis = 'abiFilters += listOf("arm64-v8a", "x86_64")'
+          if old_abis not in text:
+              raise SystemExit("Could not locate NDK ABI filters")
+          text = text.replace(old_abis, 'abiFilters += listOf("arm64-v8a")', 1)
+
+          lines = text.splitlines(keepends=True)
+          start = next((i for i, line in enumerate(lines) if line.strip() == "splits {"), None)
+          if start is None:
+              raise SystemExit("Could not locate ABI splits block")
+          depth = 0
+          end = None
+          for i in range(start, len(lines)):
+              depth += lines[i].count("{") - lines[i].count("}")
+              if depth == 0:
+                  end = i
+                  break
+          if end is None:
+              raise SystemExit("Unbalanced ABI splits block")
+          lines[start:end + 1] = ["    // Trial build: one ARM64 APK; ABI splits disabled.\n"]
+          build.write_text("".join(lines))
+          PY
+
+          grep -F 'termux = "0.118.0"' gradle/libs.versions.toml
+          grep -F 'implementation(libs.termux.terminal.view)' app/build.gradle.kts
+          grep -F 'abiFilters += listOf("arm64-v8a")' app/build.gradle.kts
+          ! grep -q 'splits {' app/build.gradle.kts
+
+      - name: Build unsigned Release ARM64 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease \
+            -PMOATAZ_VERSION_CODE=2000 \
+            -PMOATAZ_VERSION_NAME=0.2.0-trial
+
+      - name: Create temporary trial signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/moataz-trial-signing"
+          PASS="$(openssl rand -hex 24)"
+          printf '%s' "$PASS" > "$RUNNER_TEMP/moataz-trial-signing/password"
+          chmod 600 "$RUNNER_TEMP/moataz-trial-signing/password"
+          keytool -genkeypair \
+            -keystore "$RUNNER_TEMP/moataz-trial-signing/trial.jks" \
+            -storepass "$PASS" \
+            -keypass "$PASS" \
+            -alias moataz-trial \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname "CN=Moataz AI Trial,O=Moataz AI,C=YE"
+
+      - name: Align, sign and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          PASS="$(cat "$RUNNER_TEMP/moataz-trial-signing/password")"
+
+          mapfile -t APKS < <(find app/build/outputs/apk/release -type f -name '*.apk' | sort)
+          printf 'Release APK outputs:\n%s\n' "${APKS[*]}"
+          [[ ${#APKS[@]} -eq 1 ]] || { echo "Expected exactly one ARM64 release APK, found ${#APKS[@]}" >&2; exit 1; }
+          SRC="${APKS[0]}"
+
+          mkdir -p dist
+          "$ZIPALIGN" -f -p 4 "$SRC" dist/moataz-ai-0.2.0-trial-arm64-android8plus-aligned.apk
+          "$APKSIGNER" sign \
+            --ks "$RUNNER_TEMP/moataz-trial-signing/trial.jks" \
+            --ks-key-alias moataz-trial \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            --out dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk \
+            dist/moataz-ai-0.2.0-trial-arm64-android8plus-aligned.apk
+          rm dist/moataz-ai-0.2.0-trial-arm64-android8plus-aligned.apk
+
+          "$APKSIGNER" verify --verbose --print-certs dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk | tee dist/apksigner-verification.txt
+          "$ZIPALIGN" -c -v 4 dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk > dist/zipalign-verification.txt
+          "$AAPT" dump badging dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk | tee dist/aapt-badging.txt
+
+          grep -q "package: name='ai.moataz'" dist/aapt-badging.txt
+          grep -q "sdkVersion:'26'" dist/aapt-badging.txt
+          grep -q "targetSdkVersion:'37'" dist/aapt-badging.txt
+
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          apk = Path('dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk')
+          with zipfile.ZipFile(apk) as z:
+              native = [n for n in z.namelist() if n.startswith('lib/') and n.endswith('.so')]
+          if not native:
+              raise SystemExit('APK contains no native libraries')
+          wrong = [n for n in native if not n.startswith('lib/arm64-v8a/')]
+          if wrong:
+              raise SystemExit('Non-ARM64 native libraries found: ' + ', '.join(wrong[:20]))
+          print(f'ARM64 native libraries verified: {len(native)}')
+          PY
+
+          sha256sum dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk | tee dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk.sha256
+
+      - name: Upload verified trial APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: moataz-ai-0.2.0-trial-arm64-android8plus
+          path: |
+            dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk
+            dist/moataz-ai-0.2.0-trial-arm64-android8plus.apk.sha256
+            dist/apksigner-verification.txt
+            dist/zipalign-verification.txt
+            dist/aapt-badging.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/moataz-trial-signing"

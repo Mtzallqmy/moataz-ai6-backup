@@ -85,6 +85,11 @@ jobs:
           set -euo pipefail
           mkdir -p .ci
           printf '%s' "$MOATAZ_KEYSTORE_BASE64" | base64 --decode > .ci/moataz-release.jks
+          [[ -s .ci/moataz-release.jks ]] || { echo "Decoded release keystore is empty." >&2; exit 1; }
+          keytool -list \
+            -keystore .ci/moataz-release.jks \
+            -storepass "$MOATAZ_KEYSTORE_PASSWORD" \
+            -alias "$MOATAZ_KEY_ALIAS" >/dev/null
           {
             printf 'storeFile=%s\n' "$GITHUB_WORKSPACE/.ci/moataz-release.jks"
             printf 'storePassword=%s\n' "$MOATAZ_KEYSTORE_PASSWORD"
@@ -97,8 +102,15 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          mkdir -p .ci-logs
-          ./gradlew --no-daemon --stacktrace :ai:testDebugUnitTest :app:testDebugUnitTest 2>&1 | tee .ci-logs/unit-tests.log
+          mkdir -p ci-logs
+          ./gradlew --no-daemon --stacktrace :ai:testDebugUnitTest :app:testDebugUnitTest 2>&1 | tee ci-logs/unit-tests.log
+
+      - name: Release lint
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-logs
+          ./gradlew --no-daemon --stacktrace :app:lintRelease 2>&1 | tee ci-logs/lint-release.log
 
       - name: Upload test diagnostics
         if: failure()
@@ -106,9 +118,10 @@ jobs:
         with:
           name: moataz-ai-test-diagnostics
           path: |
-            .ci-logs/unit-tests.log
+            ci-logs/*.log
             ai/build/reports/tests/**
             app/build/reports/tests/**
+            app/build/reports/lint-results-release.*
           if-no-files-found: warn
           retention-days: 7
 
@@ -141,4 +154,4 @@ jobs:
 
       - name: Clean signing material
         if: always()
-        run: rm -rf .ci .ci-logs local.properties
+        run: rm -rf .ci ci-logs local.properties
