@@ -110,7 +110,7 @@ android {
     }
     lint {
         // FullBackupContent insists every <exclude> path lives under a previously
-        // <include>'d root. Our backup_rules.xml + data_extraction_rules.xml use
+        // <include'd root. Our backup_rules.xml + data_extraction_rules.xml use
         // include="upload/" + explicit excludes for databases / sharedpref /
         // datastore/ / known_hosts / browser-profile/ / local-models/ as
         // belt-and-suspenders defence: if anyone later adds a broader <include>
@@ -164,7 +164,6 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.webkit)
-    implementation(libs.termux.terminal.view)
     implementation(libs.guava.listenablefuture)
 
     // Compose
