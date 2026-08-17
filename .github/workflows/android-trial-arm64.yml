@@ -76,16 +76,38 @@ jobs:
                   marker + "\n    // Termux terminal UI/runtime used by Workspace terminal panes\n    implementation(libs.termux.terminal.view)\n",
                   1,
               )
-          text = text.replace('abiFilters += listOf("arm64-v8a", "x86_64")', 'abiFilters += listOf("arm64-v8a")')
-          text = text.replace('include("arm64-v8a", "x86_64")', 'include("arm64-v8a")')
-          text = text.replace('isUniversalApk = true', 'isUniversalApk = false')
+
+          text = text.replace(
+              'abiFilters += listOf("arm64-v8a", "x86_64")',
+              'abiFilters += listOf("arm64-v8a")',
+          )
+
+          splits = '''    splits {
+              abi {
+                  // AppBundle tasks usually contain "bundle" in their name
+                  //noinspection WrongGradleMethod
+                  val isBuildingBundle = gradle.startParameter.taskNames.any { it.lowercase().contains("bundle") }
+                  isEnable = !isBuildingBundle
+                  reset()
+                  include("arm64-v8a", "x86_64")
+                  isUniversalApk = true
+              }
+          }
+          '''
+          if splits not in text:
+              raise SystemExit("Could not locate ABI splits block")
+          text = text.replace(
+              splits,
+              '    // Trial build: a single ARM64 APK; ABI splits are intentionally disabled.\n',
+              1,
+          )
           build.write_text(text)
           PY
 
           grep -F 'termux = "0.118.0"' gradle/libs.versions.toml
           grep -F 'implementation(libs.termux.terminal.view)' app/build.gradle.kts
           grep -F 'abiFilters += listOf("arm64-v8a")' app/build.gradle.kts
-          grep -F 'include("arm64-v8a")' app/build.gradle.kts
+          ! grep -q 'splits {' app/build.gradle.kts
 
       - name: Build unsigned Release ARM64 APK
         shell: bash
