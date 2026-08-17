@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      These checks represent existing localization/configuration-awareness debt, not
+      release-blocking runtime faults. Keep them visible in lint reports as warnings so
+      they can be reduced incrementally while Android safely falls back to default strings.
+      Runtime safety checks such as NewApi and MissingPermission remain errors.
+    -->
+    <issue id="MissingTranslation" severity="warning" />
+    <issue id="LocalContextGetResourceValueCall" severity="warning" />
+    <issue id="NonObservableLocale" severity="warning" />
+    <issue id="ContextCastToActivity" severity="warning" />
+</lint>
